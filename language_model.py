@@ -1,5 +1,7 @@
 from collections import *
 from random import random
+import pprint
+import operator
 
 def train_char_lm(fname, order=4, add_k=1):
   ''' Trains a language model.
@@ -26,9 +28,16 @@ def train_char_lm(fname, order=4, add_k=1):
   for i in range(len(data)-order):
     history, char = data[i:i+order], data[i+order]
     lm[history][char]+=1
+  
+  def add_k_func(counter):
+    for key, val in counter.items():
+      counter[key] = val + add_k
+    return counter
+
   def normalize(counter):
     s = float(sum(counter.values()))
     return [(c,cnt/s) for c,cnt in counter.items()]
+  lm = {hist:add_k_func(chars) for hist, chars in lm.items()}
   outlm = {hist:normalize(chars) for hist, chars in lm.items()}
   return outlm
 
@@ -99,9 +108,14 @@ def calculate_prob_with_backoff(char, history, lms, lambdas):
   Returns:
     Probability of char appearing next in the sequence.
   ''' 
+
   # TODO: YOUR CODE HRE
   pass
 
+def print_probs(lm, history):
+    probs = sorted(lm[history],key=lambda x:(-x[1],x[0]))
+    pp = pprint.PrettyPrinter()
+    pp.pprint(probs)
 
 def set_lambdas(lms, dev_filename):
   '''Returns a list of lambda values that weight the contribution of each n-gram model
@@ -120,5 +134,10 @@ def set_lambdas(lms, dev_filename):
 
 if __name__ == '__main__':
   print('Training language model')
-  lm = train_char_lm("shakespeare_input.txt", order=2)
-  print(generate_text(lm, 2))
+  lm = train_char_lm("shakespeare_input.txt", order=0)
+  print_probs(lm, '')
+  print(len(lm))
+  sum = 0
+  for char, prob in lm['']:
+    sum += prob
+  print(sum)
