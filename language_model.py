@@ -2,6 +2,7 @@ from collections import *
 from random import random
 import pprint
 import operator
+import math
 
 def train_char_lm(fname, order=4, add_k=1):
   ''' Trains a language model.
@@ -22,6 +23,7 @@ def train_char_lm(fname, order=4, add_k=1):
   # TODO: Add your implementation of add-k smoothing.
 
   data = open(fname).read()
+  list_of_chars = set(list(data))
   lm = defaultdict(Counter)
   pad = "~" * order
   data = pad + data
@@ -30,8 +32,9 @@ def train_char_lm(fname, order=4, add_k=1):
     lm[history][char]+=1
   
   def add_k_func(counter):
-    for key, val in counter.items():
-      counter[key] = val + add_k
+    for char in list_of_chars:
+      counter[char] = counter[char] + add_k
+      counter['OOV'] = add_k
     return counter
 
   def normalize(counter):
@@ -88,11 +91,32 @@ def perplexity(test_filename, lm, order=4):
     test_filename: path to text file
     lm: The output from calling train_char_lm.
     order: The length of the n-grams in the language model.
-  '''
-  test = open(test_filename).read()
-  pad = "~" * order
-  test = pad + data
   
+  Assumptions:
+    Assumes probabilities have been smoothed
+    Assumes out of vocabulary words have been handled somehow
+
+  Flaws:
+    Doesn't currently have a solution for unseen histories
+  '''
+  data = open(test_filename).read()
+  trained_lexicon = map(lambda x: x[0], lm[lm.keys()[0]])
+  trained_lexicon.remove('OOV')
+
+  N = len(data)
+  pad = "~" * order
+  data = pad + data
+  prob = 0
+  for i in range(len(data) - order):
+    history, char = data[i:i+order], data[i]
+    possibilities = lm[history]
+    char_to_prob = dict(possibilities)
+    if char not in trained_lexicon:
+      char = 'OOV'
+    prob += math.log(char_to_prob[char])
+  perplex = 1 / prob
+  perplex = math.pow(perplex, 1/N)
+  return perplex
   # TODO: YOUR CODE HRE
 
 def calculate_prob_with_backoff(char, history, lms, lambdas):
@@ -135,9 +159,11 @@ def set_lambdas(lms, dev_filename):
 if __name__ == '__main__':
   print('Training language model')
   lm = train_char_lm("shakespeare_input.txt", order=0)
-  print_probs(lm, '')
+  print_probs(lm, ' ')
   print(len(lm))
   sum = 0
+  print(len(lm['']))
   for char, prob in lm['']:
     sum += prob
+  print(type(lm['']))
   print(sum)
