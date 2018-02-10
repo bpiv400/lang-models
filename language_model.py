@@ -84,7 +84,8 @@ def generate_text(lm, order, nletters=500):
     out.append(c)
   return "".join(out)
 
-def perplexity(test_filename, lm, order=4):
+
+def interpolated_perplexity(test_filename, lms, lambdas, order=4):
   '''Computes the perplexity of a text file given the language model.
   
   Inputs:
@@ -96,8 +97,12 @@ def perplexity(test_filename, lm, order=4):
     Assumes probabilities have been smoothed
     Assumes out of vocabulary words have been handled somehow
 
-  Flaws:
-    Doesn't currently have a solution for unseen histories
+  lms: A list of language models, outputted by calling train_char_lm. Assumes 
+     the language model with the longest history is first in the list and the language
+     model with the shortest history (i.e. 0 ) is last
+     Constraints on the lms list suggest the longest history (ie the highest order lm) 
+     has order n-1, where n is the length of the list
+    
   '''
   data = open(test_filename).read()
   trained_lexicon = map(lambda x: x[0], lm[lm.keys()[0]])
@@ -109,15 +114,48 @@ def perplexity(test_filename, lm, order=4):
   prob = 0
   for i in range(len(data) - order):
     history, char = data[i:i+order], data[i]
-    possibilities = lm[history]
-    char_to_prob = dict(possibilities)
-    if char not in trained_lexicon:
-      char = 'OOV'
-    prob += math.log(char_to_prob[char])
+    curr_prob = calculate_prob_with_backoff(char, history, lms, lambdas)
+    prob += curr_prob
+  prob = math.exp(prob)
   perplex = 1 / prob
   perplex = math.pow(perplex, 1/N)
   return perplex
-  # TODO: YOUR CODE HRE
+
+def perplexity(test_filename, lm, order=4):
+  '''Computes the perplexity of a text file given the language model.
+  
+  Inputs:
+    test_filename: path to text file
+    lm: The output from calling train_char_lm.
+    order: The length of the n-grams in the language model.
+  
+  Assumptions:
+    Assumes probabilities have been smoothed
+    Assumes out of vocabulary words have been handled somehow
+  '''
+  data = open(test_filename).read()
+  trained_lexicon = map(lambda x: x[0], lm[lm.keys()[0]])
+  trained_lexicon.remove('OOV')
+
+  N = len(data)
+  pad = "~" * order
+  data = pad + data
+  prob = 0
+  for i in range(len(data) - order):
+    history, char = data[i:i+order], data[i]
+    if history in lm:
+      possibilities = lm[history]
+      char_to_prob = dict(possibilities)
+      if char not in trained_lexicon:
+        char = 'OOV'
+      curr_prob = math.log(char_to_prob[char]) 
+    else:
+      curr_prob = math.log(1/(len(trained_lexicon) + 1))
+    prob += curr_prob
+  prob = math.exp(prob)
+  perplex = 1 / prob
+  perplex = math.pow(perplex, 1/N)
+  return perplex
 
 def calculate_prob_with_backoff(char, history, lms, lambdas):
   '''Uses interpolation to compute the probability of char given a series of 
@@ -126,15 +164,36 @@ def calculate_prob_with_backoff(char, history, lms, lambdas):
    Inputs:
      char: Character to compute the probability of.
      history: A sequence of previous text.
-     lms: A list of language models, outputted by calling train_char_lm.
+     lms: A list of language models, outputted by calling train_char_lm. Assumes 
+     the language model with the longest history is first in the list and the language
+     model with the shortest history (i.e. 0 ) is last
+     Constraints on the lms list suggest the longest history (ie the highest order lm) 
+     has order n-1, where n is the length of the list
      lambdas: A list of weights for each lambda model. These should sum to 1.
     
   Returns:
     Probability of char appearing next in the sequence.
-  ''' 
+  '''
+  first_lm = lms[0]
+  trained_lexicon = map(lambda x: x[0], first_lm[first_lm.keys()[0]])
+  trained_lexicon.remove('OOV')
 
-  # TODO: YOUR CODE HRE
-  pass
+  prob = 0
+  curr_order = len(lms) - 1
+  for curr_lm, curr_lambda in zip(lms, lambdas): 
+    curr_history = history[0:curr_order]
+    if curr_history in curr_lm:
+      possibilities = curr_lm[curr_history]
+      char_to_prob = dict(possibilities)
+      if char not in trained_lexicon:
+        char = 'OOV'
+      curr_prob = curr_lambda * char_to_prob[char] 
+    else:
+      curr_prob = curr_lambda * len(trained_lexicon)
+    prob += curr_prob
+    curr_order -= 1
+
+  return prob
 
 def print_probs(lm, history):
     probs = sorted(lm[history],key=lambda x:(-x[1],x[0]))
