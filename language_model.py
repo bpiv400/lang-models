@@ -181,7 +181,7 @@ def calculate_prob_with_backoff(char, history, lms, lambdas):
   prob = 0
   curr_order = len(lms) - 1
   for curr_lm, curr_lambda in zip(lms, lambdas): 
-    curr_history = history[0:curr_order]
+    curr_history = history[len(history) - curr_order: ]
     if curr_history in curr_lm:
       possibilities = curr_lm[curr_history]
       char_to_prob = dict(possibilities)
