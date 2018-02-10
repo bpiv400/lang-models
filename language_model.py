@@ -3,6 +3,8 @@ from random import random
 import pprint
 import operator
 import math
+import numpy as np
+from scipy.optimize import minimize, rosen, rosen_der
 
 def train_char_lm(fname, order=4, add_k=1):
   ''' Trains a language model.
@@ -85,7 +87,7 @@ def generate_text(lm, order, nletters=500):
   return "".join(out)
 
 
-def interpolated_perplexity(test_filename, lms, lambdas, order=4):
+def interpolated_perplexity(test_filename, lms, lambdas):
   '''Computes the perplexity of a text file given the language model.
   
   Inputs:
@@ -105,7 +107,7 @@ def interpolated_perplexity(test_filename, lms, lambdas, order=4):
     
   '''
   data = open(test_filename).read()
-  trained_lexicon = map(lambda x: x[0], lm[lm.keys()[0]])
+  trained_lexicon = list(map(lambda x: x[0], lm[list(lm.keys())[0]]))
   trained_lexicon.remove('OOV')
 
   N = len(data)
@@ -116,9 +118,8 @@ def interpolated_perplexity(test_filename, lms, lambdas, order=4):
     history, char = data[i:i+order], data[i]
     curr_prob = calculate_prob_with_backoff(char, history, lms, lambdas)
     prob += curr_prob
-  prob = math.exp(prob)
-  perplex = 1 / prob
-  perplex = math.pow(perplex, 1/N)
+  prob = -1 / N * prob
+  perplex = math.exp(prob)
   return perplex
 
 def perplexity(test_filename, lm, order=4):
@@ -134,7 +135,7 @@ def perplexity(test_filename, lm, order=4):
     Assumes out of vocabulary words have been handled somehow
   '''
   data = open(test_filename).read()
-  trained_lexicon = map(lambda x: x[0], lm[lm.keys()[0]])
+  trained_lexicon = list(map(lambda x: x[0], lm[list(lm.keys())[0]]))
   trained_lexicon.remove('OOV')
 
   N = len(data)
@@ -152,9 +153,8 @@ def perplexity(test_filename, lm, order=4):
     else:
       curr_prob = math.log(1/(len(trained_lexicon) + 1))
     prob += curr_prob
-  prob = math.exp(prob)
-  perplex = 1 / prob
-  perplex = math.pow(perplex, 1/N)
+  prob = -1 / N * prob
+  perplex = math.exp(prob)
   return perplex
 
 def calculate_prob_with_backoff(char, history, lms, lambdas):
@@ -175,7 +175,7 @@ def calculate_prob_with_backoff(char, history, lms, lambdas):
     Probability of char appearing next in the sequence.
   '''
   first_lm = lms[0]
-  trained_lexicon = map(lambda x: x[0], first_lm[first_lm.keys()[0]])
+  trained_lexicon = list(map(lambda x: x[0], first_lm[list(first_lm.keys())[0]]))
   trained_lexicon.remove('OOV')
 
   prob = 0
@@ -195,6 +195,43 @@ def calculate_prob_with_backoff(char, history, lms, lambdas):
 
   return prob
 
+def interpolated_perplexity_opt(lambdas, lms, test_filename):
+  '''Computes the perplexity of a text file given the language model.
+  
+  Inputs:
+    test_filename: path to text file
+    lm: The output from calling train_char_lm.
+    order: The length of the n-grams in the language model.
+  
+  Assumptions:
+    Assumes probabilities have been smoothed
+    Assumes out of vocabulary words have been handled somehow
+
+  lms: A list of language models, outputted by calling train_char_lm. Assumes 
+     the language model with the longest history is first in the list and the language
+     model with the shortest history (i.e. 0 ) is last
+     Constraints on the lms list suggest the longest history (ie the highest order lm) 
+     has order n-1, where n is the length of the list
+  lambdas: A 1 dimensional ndarray where each value is a weight for a language model where
+  the first corresponds to the highest order model
+  '''
+  lambdas = lambdas.tolist()
+  data = open(test_filename).read()
+  trained_lexicon = list(map(lambda x: x[0], lm[list(lm.keys())[0]]))
+  trained_lexicon.remove('OOV')
+
+  N = len(data)
+  pad = "~" * order
+  data = pad + data
+  prob = 0
+  for i in range(len(data) - order):
+    history, char = data[i:i+order], data[i]
+    curr_prob = calculate_prob_with_backoff(char, history, lms, lambdas)
+    prob += curr_prob
+  prob = -1 / N * prob
+  perplex = math.exp(prob)
+  return perplex
+
 def print_probs(lm, history):
     probs = sorted(lm[history],key=lambda x:(-x[1],x[0]))
     pp = pprint.PrettyPrinter()
@@ -212,17 +249,31 @@ def set_lambdas(lms, dev_filename):
   Returns:
     Probability of char appearing next in the sequence.
   '''
-  # TODO: YOUR CODE HERE
-  pass
+  init_val = 1/len(lms)
+  init_vals = init_val * np.ones(len(lms))
+  bons = []
+  for i in len(lms):
+    bons.append((0, 1))
+  
+  cons = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
+  lambdas = minimize(interpolated_perplexity_opt, init_vals, args=(lms, dev_filename), 
+  bounds=bons, constraints=cons, options={'maxiter': 1000, 'disp': True})
+
+  lambdas.x = lambdas
+  lambdas = lambdas.tolist()
+  return lambdas 
 
 if __name__ == '__main__':
   print('Training language model')
-  lm = train_char_lm("shakespeare_input.txt", order=0)
-  print_probs(lm, ' ')
-  print(len(lm))
-  sum = 0
-  print(len(lm['']))
-  for char, prob in lm['']:
-    sum += prob
-  print(type(lm['']))
-  print(sum)
+  lm_0 = train_char_lm("shakespeare_input.txt", order=0, add_k = 1)
+  lm_1 = train_char_lm("shakespeare_input.txt", order=1, add_k = 1)
+  lm_2 = train_char_lm("shakespeare_input.txt", order=2, add_k = 1)
+  lm_3 = train_char_lm("shakespeare_input.txt", order=3, add_k = 1)
+  lms = [lm_3, lm_2, lm_1, lm_0]
+  print(str(perplexity('shakespeare_input.txt', lm_0, order = 0)))
+  print(str(perplexity('shakespeare_input.txt', lm_1, order = 1)))
+  print(str(perplexity('shakespeare_input.txt', lm_2, order = 2)))
+  print(str(perplexity('shakespeare_input.txt', lm_3, order = 3)))
+
+  best_lambdas = set_lambdas(lms, "warpeace_input.txt")
+  print(best_lambdas)
