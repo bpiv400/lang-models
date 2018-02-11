@@ -1,0 +1,21 @@
+Training language model
+Optimization terminated successfully.    (Exit mode 0)
+            Current function value: 0.7583205528455008
+            Iterations: 7
+            Function evaluations: 42
+            Gradient evaluations: 7
+Traceback (most recent call last):
+  File "/home1/e/eplu/miniconda3/envs/langenv/lib/python3.6/site-packages/scipy/optimize/optimize.py", line 114, in __getattr__
+    return self[name]
+KeyError: 'tolist'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "./language_model.py", line 282, in <module>
+    best_lambdas = set_lambdas(lms, "warpeace_input.txt")
+  File "./language_model.py", line 270, in set_lambdas
+    lambdas = lambdas.tolist()
+  File "/home1/e/eplu/miniconda3/envs/langenv/lib/python3.6/site-packages/scipy/optimize/optimize.py", line 116, in __getattr__
+    raise AttributeError(name)
+AttributeError: tolist
