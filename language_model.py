@@ -1,3 +1,5 @@
+#!/home1/e/eplu/miniconda3/envs/langenv/bin/python
+
 from collections import *
 from random import random
 import pprint
@@ -191,7 +193,7 @@ def calculate_prob_with_backoff(char, history, lms, lambdas):
         char = 'OOV'
       curr_prob = curr_lambda * char_to_prob[char] 
     else:
-      curr_prob = curr_lambda * len(trained_lexicon)
+      curr_prob = curr_lambda * 1 / len(trained_lexicon)
     prob += curr_prob
     curr_order -= 1
 
@@ -224,12 +226,13 @@ def interpolated_perplexity_opt(lambdas, lms, test_filename):
   if 'OOV' in trained_lexicon:
     trained_lexicon.remove('OOV')
 
+  highest_order = len(lms) - 1
   N = len(data)
-  pad = "~" * (len(lms) - 1)
+  pad = "~" * highest_order
   data = pad + data
   prob = 0
-  for i in range(len(data) - order):
-    history, char = data[i:i+order], data[i+order]
+  for i in range(len(data) - highest_order):
+    history, char = data[i:i+highest_order], data[i+highest_order]
     curr_prob = calculate_prob_with_backoff(char, history, lms, lambdas)
     prob += curr_prob
   prob = -1 / N * prob
@@ -261,7 +264,7 @@ def set_lambdas(lms, dev_filename):
   
   cons = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
   lambdas = minimize(interpolated_perplexity_opt, init_vals, args=(lms, dev_filename), 
-  bounds=bons, constraints=cons, options={'maxiter': 1000, 'disp': True})
+  bounds=bons, constraints=cons, options={'maxiter': 50, 'disp': True})
 
   lambdas.x = lambdas
   lambdas = lambdas.tolist()
@@ -275,11 +278,14 @@ if __name__ == '__main__':
   lm_3 = train_char_lm("shakespeare_input.txt", order=3, add_k = 1)
   lm_4 = train_char_lm("shakespeare_input.txt", order=4, add_k = 1)
 
+  lms = [lm_3, lm_2, lm_1, lm_0]
+  best_lambdas = set_lambdas(lms, "warpeace_input.txt")
+  print(best_lambdas)
+
   unsmoothed_lm = train_char_lm("shakespeare_input.txt", order=3, add_k = 0)
   print("Shakespeare Perplexity 3 - order and unsmoothed: " +
   str(perplexity('shakespeare_input.txt', unsmoothed_lm, order = 3)))
 
-  lms = [lm_3, lm_2, lm_1, lm_0]
   print("Shakespeare Perplexity 0 - order: " + 
   str(perplexity('shakespeare_input.txt', lm_0, order = 0)))
   print("Shakespeare Perplexity 1 - order: " + 
@@ -299,6 +305,3 @@ if __name__ == '__main__':
   str(perplexity('warpeace_input.txt', lm_2, order = 2)))
   print("War and Peace Perplexity 3 - order: " +
   str(perplexity('warpeace_input.txt', lm_3, order = 3)))
-
-  best_lambdas = set_lambdas(lms, "warpeace_input.txt")
-  print(best_lambdas)
