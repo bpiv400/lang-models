@@ -266,7 +266,7 @@ def set_lambdas(lms, dev_filename):
   lambdas = minimize(interpolated_perplexity_opt, init_vals, args=(lms, dev_filename), 
   bounds=bons, constraints=cons, options={'maxiter': 50, 'disp': True})
 
-  lambdas.x = lambdas
+  lambdas = lambdas.x
   lambdas = lambdas.tolist()
   return lambdas 
 
