@@ -26,13 +26,13 @@ def train_char_lm(fname, order=4, add_k=1):
 
   # TODO: Add your implementation of add-k smoothing.
 
-  data = open(fname).read()
-  list_of_chars = set(list(data))
+  train = open(fname, encoding='latin-1').read()
+  list_of_chars = set(list(train))
   lm = defaultdict(Counter)
   pad = "~" * order
-  data = pad + data
-  for i in range(len(data)-order):
-    history, char = data[i:i+order], data[i+order]
+  train = pad + train
+  for i in range(len(train)-order):
+    history, char = train[i:i+order], train[i+order]
     lm[history][char]+=1
   
   def add_k_func(counter):
@@ -108,16 +108,16 @@ def interpolated_perplexity(test_filename, lms, lambdas):
      has order n-1, where n is the length of the list
     
   '''
-  data = open(test_filename).read()
+  train = open(test_filename).read()
   trained_lexicon = list(map(lambda x: x[0], lm[list(lm.keys())[0]]))
   trained_lexicon.remove('OOV')
 
-  N = len(data)
+  N = len(train)
   pad = "~" * order
-  data = pad + data
+  train = pad + train
   prob = 0
-  for i in range(len(data) - order):
-    history, char = data[i:i+order], data[i + order]
+  for i in range(len(train) - order):
+    history, char = train[i:i+order], train[i + order]
     curr_prob = calculate_prob_with_backoff(char, history, lms, lambdas)
     prob += curr_prob
   prob = -1 / N * prob
@@ -136,17 +136,17 @@ def perplexity(test_filename, lm, order=4):
     Assumes probabilities have been smoothed
     Assumes out of vocabulary words have been handled somehow
   '''
-  data = open(test_filename).read()
+  train = open(test_filename, encoding='latin-1').read()
   trained_lexicon = list(map(lambda x: x[0], lm[list(lm.keys())[0]]))
   if 'OOV' in trained_lexicon:
     trained_lexicon.remove('OOV')
 
-  N = len(data)
+  N = len(train)
   pad = "~" * order
-  data = pad + data
+  train = pad + train
   prob = 0
-  for i in range(len(data) - order):
-    history, char = data[i:i+order], data[i+order]
+  for i in range(len(train) - order):
+    history, char = train[i:i+order], train[i+order]
     if history in lm:
       possibilities = lm[history]
       char_to_prob = dict(possibilities)
@@ -220,19 +220,19 @@ def interpolated_perplexity_opt(lambdas, lms, test_filename):
   the first corresponds to the highest order model
   '''
   lambdas = lambdas.tolist()
-  data = open(test_filename).read()
+  train = open(test_filename).read()
   first_lm = lms[0]
   trained_lexicon = list(map(lambda x: x[0], first_lm[list(first_lm.keys())[0]]))
   if 'OOV' in trained_lexicon:
     trained_lexicon.remove('OOV')
 
   highest_order = len(lms) - 1
-  N = len(data)
+  N = len(train)
   pad = "~" * highest_order
-  data = pad + data
+  train = pad + train
   prob = 0
-  for i in range(len(data) - highest_order):
-    history, char = data[i:i+highest_order], data[i+highest_order]
+  for i in range(len(train) - highest_order):
+    history, char = train[i:i+highest_order], train[i+highest_order]
     curr_prob = calculate_prob_with_backoff(char, history, lms, lambdas)
     prob += curr_prob
   prob = -1 / N * prob
@@ -265,10 +265,51 @@ def set_lambdas(lms, dev_filename):
   cons = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
   lambdas = minimize(interpolated_perplexity_opt, init_vals, args=(lms, dev_filename), 
   bounds=bons, constraints=cons, options={'maxiter': 50, 'disp': True})
-
+  # lambs = (1/len(lms)) * np.ones(len(lms))
+  # return lambs
   lambdas = lambdas.x
-  lambdas = lambdas.tolist()
-  return lambdas 
+  return lambdas.tolist()
+
+def getModels(countries):
+  allModels = []
+  for c in countries:
+    print("Getting models for %s" %c)
+    # lm_0 = train_char_lm("train/%s.txt" %c, order = 0, add_k = 1)
+    lm_1 = train_char_lm("train/%s.txt" %c, order = 1, add_k = 1)
+    lm_2 = train_char_lm("train/%s.txt" %c, order = 2, add_k = 1)
+    lm_3 = train_char_lm("train/%s.txt" %c, order = 3, add_k = 1)
+    lm_4 = train_char_lm("train/%s.txt" %c, order = 4, add_k = 1)
+    lm_5 = train_char_lm("train/%s.txt" %c, order = 5, add_k = 1)
+
+    # all lms with longest history first
+    # lms = [lm_5, lm_4, lm_3, lm_2, lm_1, lm_0]
+    lms = [lm_5, lm_4, lm_3, lm_2, lm_1]
+    lambdas = set_lambdas(lms, "val/%s.txt" %c) 
+
+    # appends total lms list WTIH its lambdas
+    allModels.append((lms, lambdas))
+
+  return allModels
+
+def findCountry(models, city):
+  probs = np.ones(len(models))
+  #go through each character of city 
+  for i in range (1, len(city)): 
+    #find probability of character for each different model
+    for j in range(0, len(models)):
+      model, lambdas = models[j]
+      # add probability to running probability
+      probs[j] *= calculate_prob_with_backoff(city[i], city[:i], model, lambdas)
+
+  # returns index value of corresponding country
+  return probs.tolist().index(max(probs))
+
+def runPerp(filename, lms):
+  # print("0: " + (str)(perplexity(filename, lms[4], order=0)))
+  print("1: " + (str)(perplexity(filename, lms[3], order=1)))
+  print("2: " + (str)(perplexity(filename, lms[2], order=2)))
+  print("3: " + (str)(perplexity(filename, lms[1], order=3)))
+  print("4: " + (str)(perplexity(filename, lms[0], order=4)))
 
 if __name__ == '__main__':
   print('Training language model')
@@ -278,30 +319,54 @@ if __name__ == '__main__':
   lm_3 = train_char_lm("shakespeare_input.txt", order=3, add_k = 1)
   lm_4 = train_char_lm("shakespeare_input.txt", order=4, add_k = 1)
 
-  lms = [lm_3, lm_2, lm_1, lm_0]
-  best_lambdas = set_lambdas(lms, "warpeace_input.txt")
-  print(best_lambdas)
+  # lms = [lm_4, lm_3, lm_2, lm_1, lm_0]
+  lms = [lm_4, lm_3, lm_2, lm_1]
 
-  unsmoothed_lm = train_char_lm("shakespeare_input.txt", order=3, add_k = 0)
-  print("Shakespeare Perplexity 3 - order and unsmoothed: " +
-  str(perplexity('shakespeare_input.txt', unsmoothed_lm, order = 3)))
+  print ("NYT")
+  runPerp("test_data/nytimes_article.txt", lms)
+  print ("Sonnets")
+  runPerp("test_data/shakespeare_sonnets.txt", lms)
+  print("Spenser")
+  runPerp("test_data/spenser.txt", lms)
+  # best_lambdas = set_lambdas(lms, "warpeace_input.txt")
+  # print(best_lambdas)
 
-  print("Shakespeare Perplexity 0 - order: " + 
-  str(perplexity('shakespeare_input.txt', lm_0, order = 0)))
-  print("Shakespeare Perplexity 1 - order: " + 
-  str(perplexity('shakespeare_input.txt', lm_1, order = 1)))
-  print("Shakespeare Perplexity 2 - order: " +
-  str(perplexity('shakespeare_input.txt', lm_2, order = 2)))
-  print("Shakespeare Perplexity 3 - order: " +
-  str(perplexity('shakespeare_input.txt', lm_3, order = 3)))
-  print("Shakespeare Perplexity 4 - order: " +
-  str(perplexity('shakespeare_input.txt', lm_4, order = 4)))
+  # unsmoothed_lm = train_char_lm("shakespeare_input.txt", order=3, add_k = 0)
+  # print("Shakespeare Perplexity 3 - order and unsmoothed: " +
+  # str(perplexity('shakespeare_input.txt', unsmoothed_lm, order = 3)))
 
-  print("War and Peace Perplexity 0 - order: " + 
-  str(perplexity('warpeace_input.txt', lm_0, order = 0)))
-  print("War and Peace Perplexity 1 - order: " + 
-  str(perplexity('warpeace_input.txt', lm_1, order = 1)))
-  print("War and Peace Perplexity 2 - order: " +
-  str(perplexity('warpeace_input.txt', lm_2, order = 2)))
-  print("War and Peace Perplexity 3 - order: " +
-  str(perplexity('warpeace_input.txt', lm_3, order = 3)))
+  # print("Shakespeare Perplexity 0 - order: " + 
+  # str(perplexity('shakespeare_input.txt', lm_0, order = 0)))
+  # print("Shakespeare Perplexity 1 - order: " + 
+  # str(perplexity('shakespeare_input.txt', lm_1, order = 1)))
+  # print("Shakespeare Perplexity 2 - order: " +
+  # str(perplexity('shakespeare_input.txt', lm_2, order = 2)))
+  # print("Shakespeare Perplexity 3 - order: " +
+  # str(perplexity('shakespeare_input.txt', lm_3, order = 3)))
+  # print("Shakespeare Perplexity 4 - order: " +
+  # str(perplexity('shakespeare_input.txt', lm_4, order = 4)))
+
+  # print("War and Peace Perplexity 0 - order: " + 
+  # str(perplexity('warpeace_input.txt', lm_0, order = 0)))
+  # print("War and Peace Perplexity 1 - order: " + 
+  # str(perplexity('warpeace_input.txt', lm_1, order = 1)))
+  # print("War and Peace Perplexity 2 - order: " +
+  # str(perplexity('warpeace_input.txt', lm_2, order = 2)))
+  # print("War and Peace Perplexity 3 - order: " +
+  # str(perplexity('warpeace_input.txt', lm_3, order = 3)))
+
+
+  # COUNTRIES CODE USED FOR PART III
+  # array to be used for functions
+  # countries = ['af', 'cn', 'de', 'fi', 'fr', 'in', 'ir', 'pk', 'za']  
+
+  # models = getModels(countries)
+  # cities = open("cities_test.txt")
+  # f_out = open("output.txt", "w")
+  # for city in cities:
+  #   print ("%s, %s" %(city[:-1], countries[findCountry(models, city)])) 
+  #   f_out.write(countries[findCountry(models, city)] + "\n")
+  # f_out.close()
+  # cities.close()
+
+
