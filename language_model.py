@@ -110,7 +110,8 @@ def interpolated_perplexity(test_filename, lms, lambdas):
   '''
   train = open(test_filename).read()
   trained_lexicon = list(map(lambda x: x[0], lm[list(lm.keys())[0]]))
-  trained_lexicon.remove('OOV')
+  if 'OOV' in trained_lexicon:
+    trained_lexicon.remove('OOV')
 
   N = len(train)
   pad = "~" * order
@@ -119,7 +120,10 @@ def interpolated_perplexity(test_filename, lms, lambdas):
   for i in range(len(train) - order):
     history, char = train[i:i+order], train[i + order]
     curr_prob = calculate_prob_with_backoff(char, history, lms, lambdas)
-    prob += curr_prob
+    if curr_prob = 0:
+      return float('inf')
+    else:
+      prob += math.log(curr_prob)
   prob = -1 / N * prob
   perplex = math.exp(prob)
   return perplex
@@ -138,8 +142,10 @@ def perplexity(test_filename, lm, order=4):
   '''
   train = open(test_filename, encoding='latin-1').read()
   trained_lexicon = list(map(lambda x: x[0], lm[list(lm.keys())[0]]))
+  smoothed = False
   if 'OOV' in trained_lexicon:
     trained_lexicon.remove('OOV')
+    smoothed = True
 
   N = len(train)
   pad = "~" * order
@@ -151,10 +157,17 @@ def perplexity(test_filename, lm, order=4):
       possibilities = lm[history]
       char_to_prob = dict(possibilities)
       if char not in trained_lexicon:
-        char = 'OOV'
-      curr_prob = math.log(char_to_prob[char]) 
+        if smoothed:
+          char = 'OOV'
+          curr_prob = math.log(char_to_prob[char]) 
+        else: 
+          return float('inf')
+      else: 
+        curr_prob = math.log(char_to_prob[char])     
     else:
       curr_prob = math.log(1/(len(trained_lexicon) + 1))
+      if not smoothed:
+        return = float('inf')
     prob += curr_prob
   prob = -1 / N * prob
   perplex = math.exp(prob)
@@ -178,9 +191,11 @@ def calculate_prob_with_backoff(char, history, lms, lambdas):
     Probability of char appearing next in the sequence.
   '''
   first_lm = lms[0]
+  smoothed = False
   trained_lexicon = list(map(lambda x: x[0], first_lm[list(first_lm.keys())[0]]))
   if 'OOV' in trained_lexicon:
     trained_lexicon.remove('OOV')
+    smoothed = True
 
   prob = 0
   curr_order = len(lms) - 1
@@ -190,10 +205,18 @@ def calculate_prob_with_backoff(char, history, lms, lambdas):
       possibilities = curr_lm[curr_history]
       char_to_prob = dict(possibilities)
       if char not in trained_lexicon:
-        char = 'OOV'
-      curr_prob = curr_lambda * char_to_prob[char] 
+        if smoothed:
+          char = 'OOV'
+          curr_prob = curr_lambda * char_to_prob[char] 
+        else:
+          curr_prob = 0
+      else:
+        curr_prob = curr_lambda * char_to_prob[char]
     else:
-      curr_prob = curr_lambda * 1 / len(trained_lexicon)
+      if smoothed:
+        curr_prob = curr_lambda * 1 / len(trained_lexicon)
+      else: 
+        curr_prob = 0
     prob += curr_prob
     curr_order -= 1
 
@@ -234,7 +257,10 @@ def interpolated_perplexity_opt(lambdas, lms, test_filename):
   for i in range(len(train) - highest_order):
     history, char = train[i:i+highest_order], train[i+highest_order]
     curr_prob = calculate_prob_with_backoff(char, history, lms, lambdas)
-    prob += curr_prob
+    if curr_prob = 0:
+      return float('inf')
+    else:
+      prob += math.log(curr_prob)
   prob = -1 / N * prob
   perplex = math.exp(prob)
   return perplex
@@ -328,8 +354,15 @@ if __name__ == '__main__':
   runPerp("test_data/shakespeare_sonnets.txt", lms)
   print("Spenser")
   runPerp("test_data/spenser.txt", lms)
-  # best_lambdas = set_lambdas(lms, "warpeace_input.txt")
-  # print(best_lambdas)
+  
+  lms = [lm_4, lm_3, lm_2, lm_1, lm_0]
+  print("interpolated sonnets: ")
+
+  print('even lambdas: ' + str(interpolated_perplexity("test_data/shakespeare_sonnets.txt", lms, [.2, .2, .2, .2, .2]))
+  print('decaying lambdas: ' + str(interpolated_perplexity("test_data/shakespeare_sonnets.txt", lms, [.4, .3, .15, .1, .05]))
+
+  best_lambdas = set_lambdas(lms, "test_data/shakespeare_sonnets.txt")
+  print(best_lambdas)
 
   # unsmoothed_lm = train_char_lm("shakespeare_input.txt", order=3, add_k = 0)
   # print("Shakespeare Perplexity 3 - order and unsmoothed: " +
